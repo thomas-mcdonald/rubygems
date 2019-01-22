@@ -6,13 +6,8 @@
 # See LICENSE.txt for permissions.
 #++
 
-if RUBY_VERSION < "1.8.7"
-  $stderr.puts "RubyGems now requires Ruby 1.8.7 or later"
-  exit 1
-end
-
 # Make sure rubygems isn't already loaded.
-if ENV['RUBYOPT'] or defined? Gem then
+if ENV['RUBYOPT'] or defined? Gem
   ENV.delete 'RUBYOPT'
 
   require 'rbconfig'
@@ -22,7 +17,7 @@ if ENV['RUBYOPT'] or defined? Gem then
   ruby << config::CONFIG['EXEEXT']
 
   cmd = [ruby, 'setup.rb', *ARGV].compact
-  cmd[1,0] = "--disable-gems" if RUBY_VERSION > "1.9"
+  cmd[1,0] = "--disable-gems"
 
   exec(*cmd)
 end
@@ -47,4 +42,3 @@ begin
 rescue Gem::SystemExitException => e
   exit e.exit_code
 end
-

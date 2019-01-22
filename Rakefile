@@ -2,137 +2,54 @@
 
 require 'rubygems'
 require 'rubygems/package_task'
+require "rake/testtask"
+require 'psych'
 
-if ENV['YAML'] == "syck"
-  ENV['TEST_SYCK'] = "1"
-end
+desc "Setup Rubygems dev environment"
+task :setup => ["bundler:checkout"] do
+  gemspec = Gem::Specification.load(File.expand_path("../rubygems-update.gemspec", __FILE__))
 
-begin
-  require 'psych'
-rescue ::LoadError
-  require 'yaml'
-end
-
-begin
-  require 'hoe'
-rescue Gem::ConflictError => e
-  abort <<-ERR
-Error while loading the hoe gem.
-#{e}
-  ERR
-rescue ::LoadError
-  abort <<-ERR
-Error while loading the hoe gem.
-Please install it by running the following:
-
-$ [sudo] gem install hoe
-  ERR
-end
-
-Hoe::RUBY_FLAGS << " --disable-gems" if RUBY_VERSION > "1.9"
-
-Hoe.plugin :git
-Hoe.plugin :travis
-
-hoe = Hoe.spec 'rubygems-update' do
-  self.author         = ['Jim Weirich', 'Chad Fowler', 'Eric Hodel']
-  self.email          = %w[rubygems-developers@rubyforge.org]
-  self.readme_file    = 'README.md'
-
-  license 'Ruby'
-  license 'MIT'
-
-  spec_extras[:required_rubygems_version] = Gem::Requirement.default
-  spec_extras[:required_ruby_version]     = Gem::Requirement.new '>= 1.8.7'
-  spec_extras[:executables]               = ['update_rubygems']
-
-  rdoc_locations <<
-    'docs-push.seattlerb.org:/data/www/docs.seattlerb.org/rubygems/'
-
-  clean_globs.push('**/debug.log',
-                   '*.out',
-                   '.config',
-                   'data__',
-                   'html',
-                   'logs',
-                   'graph.dot',
-                   'pkgs/sources/sources*.gem',
-                   'scripts/*.hieraki')
-
-  extra_dev_deps.clear
-
-  dependency 'builder',       '~> 2.1',   :dev
-  dependency 'hoe-seattlerb', '~> 1.2',   :dev
-  dependency 'rdoc',          '~> 4.0',   :dev
-  dependency 'ZenTest',       '~> 4.5',   :dev
-  dependency 'rake',          '~> 10.5',  :dev
-  dependency 'minitest',      '~> 4.0',   :dev
-
-  self.extra_rdoc_files = Dir["*.rdoc"] + %w[
-    CVE-2013-4287.txt
-    CVE-2013-4363.txt
-  ]
-
-  spec_extras['rdoc_options'] = proc do |rdoc_options|
-    rdoc_options << "--title=RubyGems Update Documentation"
-  end
-
-  self.rsync_args += " --no-p -O"
-
-  self.version = File.open('lib/rubygems.rb', 'r:utf-8') do |f|
-    f.read[/VERSION\s+=\s+(['"])(#{Gem::Version::VERSION_PATTERN})\1/, 2]
-  end
-
-  spec_extras['require_paths'] = %w[hide_lib_for_update]
-end
-
-# Monkey-patch to ensure newly-installed gems are visible
-Hoe::Package.instance_method(:install_gem).tap do |existing_install_gem|
-  Hoe::Package.send(:define_method, :install_gem) do |*args|
-    existing_install_gem.bind(self).call(*args).tap { Gem::Specification.reset }
+  gemspec.dependencies.each do |dep|
+    sh "gem install '#{dep.name}:#{dep.requirement.to_s}'"
   end
 end
 
-Hoe::DEFAULT_CONFIG["exclude"] = %r[#{Hoe::DEFAULT_CONFIG["exclude"]}|\./bundler/(?!lib|man|exe|[^/]+\.md)]ox
+Rake::TestTask.new do |t|
+  t.ruby_opts = %w[--disable-gems]
+  t.ruby_opts << '-rdevkit' if Gem.win_platform?
 
-v = hoe.version
+  t.libs << "test"
+  t.libs << "bundler/lib"
 
-hoe.testlib      = :minitest
-hoe.test_prelude = <<-RUBY.gsub("\n", ";")
-  gem "minitest", "~> 4.0"
-  $:.unshift #{File.expand_path("../bundler/lib", __FILE__).dump}
-RUBY
+  t.test_files = FileList['test/**/test_*.rb']
+end
 
-Rake::Task['docs'].clear
-Rake::Task['clobber_docs'].clear
+task :default => :test
 
-begin
-  gem 'rdoc', '~> 4.0'
-  require 'rdoc/task'
+spec = Gem::Specification.load('rubygems-update.gemspec')
+v = spec.version
 
-  RDoc::Task.new :rdoc => 'docs', :clobber_rdoc => 'clobber_docs' do |doc|
-    doc.main   = hoe.readme_file
-    doc.title  = "RubyGems #{v} API Documentation"
+require 'rdoc/task'
 
-    rdoc_files = Rake::FileList.new %w[lib History.txt LICENSE.txt MIT.txt]
-    rdoc_files.add hoe.extra_rdoc_files
+RDoc::Task.new :rdoc => 'docs', :clobber_rdoc => 'clobber_docs' do |doc|
+  doc.main   = 'README.md'
+  doc.title  = "RubyGems #{v} API Documentation"
 
-    doc.rdoc_files = rdoc_files
+  rdoc_files = Rake::FileList.new %w[lib bundler/lib]
+  rdoc_files.add %w[History.txt LICENSE.txt MIT.txt CODE_OF_CONDUCT.md CONTRIBUTING.rdoc
+  MAINTAINERS.txt Manifest.txt POLICIES.rdoc README.md UPGRADING.rdoc bundler/CHANGELOG.md
+  bundler/CODE_OF_CONDUCT.md bundler/CONTRIBUTING.md bundler/LICENSE.md bundler/README.md
+  hide_lib_for_update/note.txt].map(&:freeze)
 
-    doc.rdoc_dir = 'doc'
-  end
-rescue LoadError, RuntimeError # rake 10.1 on rdoc from ruby 1.9.2 and earlier
-  task 'docs' do
-    abort 'You must install rdoc to build documentation, try `rake newb` again'
-  end
+  doc.rdoc_files = rdoc_files
+
+  doc.rdoc_dir = 'doc'
 end
 
 desc "Install gems needed to run the tests"
-task :install_test_deps => :clean_env do
-  sh "gem install minitest -v '~> 4.0'"
+task :install_test_deps => :clean do
+  sh "gem install minitest -v '~> 5.0'"
 end
-
-task(:newb).prerequisites.unshift "bundler:checkout"
 
 begin
   require "automatiek"
@@ -149,12 +66,27 @@ rescue LoadError
   end
 end
 
+desc "Run rubocop"
+task(:rubocop) do
+  sh "util/rubocop"
+end
+
 # --------------------------------------------------------------------
 # Creating a release
 
-task :prerelease => [:clobber, :check_manifest, :test]
+task :prerelease => %w[clobber test bundler:build_metadata]
+task :postrelease => %w[bundler:build_metadata:clean upload guides:publish blog:publish]
 
-task :postrelease => %w[upload guides:publish blog:publish publish_docs]
+desc "Release rubygems-#{v}"
+task :release => :prerelease do
+  Rake::Task["package"].invoke
+  sh "gem push pkg/rubygems-update-#{v}.gem"
+end
+Rake::Task["release"].enhance(["postrelease"])
+
+Gem::PackageTask.new(spec) {}
+
+Rake::Task["package"].enhance ["pkg/rubygems-#{v}.tgz", "pkg/rubygems-#{v}.zip"]
 
 file "pkg/rubygems-#{v}" => "pkg/rubygems-update-#{v}" do |t|
   require 'find'
@@ -165,7 +97,7 @@ file "pkg/rubygems-#{v}" => "pkg/rubygems-update-#{v}" do |t|
     Find.find '.' do |file|
       dest = File.expand_path file, dest_root
 
-      if File.directory? file then
+      if File.directory? file
         mkdir_p dest
       else
         rm_f dest
@@ -175,27 +107,17 @@ file "pkg/rubygems-#{v}" => "pkg/rubygems-update-#{v}" do |t|
   end
 end
 
-source_pkg_dir = "pkg/rubygems-#{v}"
-
-file "pkg/rubygems-#{v}.tgz" => source_pkg_dir do
-  cd 'pkg' do
-    sh "tar -czf rubygems-#{v}.tgz rubygems-#{v}"
-  end
-end
-
-file "pkg/rubygems-#{v}.zip" => source_pkg_dir do
+file "pkg/rubygems-#{v}.zip" => "pkg/rubygems-#{v}" do
   cd 'pkg' do
     sh "zip -q -r rubygems-#{v}.zip rubygems-#{v}"
   end
 end
 
-file "pkg/rubygems-update-#{v}.gem"
-
-task :package => %W[
-       pkg/rubygems-update-#{v}.gem
-       pkg/rubygems-#{v}.tgz
-       pkg/rubygems-#{v}.zip
-     ]
+file "pkg/rubygems-#{v}.tgz" => "pkg/rubygems-#{v}" do
+  cd 'pkg' do
+    sh "tar -czf rubygems-#{v}.tgz rubygems-#{v}"
+  end
+end
 
 desc "Upload release to S3"
 task :upload_to_s3 do
@@ -204,11 +126,6 @@ end
 
 desc "Upload release to rubygems.org"
 task :upload => %w[upload_to_s3]
-
-on_master = `git branch --list master`.strip == '* master'
-on_master = true if ENV['FORCE']
-
-Rake::Task['publish_docs'].clear unless on_master
 
 directory '../guides.rubygems.org' do
   sh 'git', 'clone',
@@ -251,6 +168,9 @@ namespace 'guides' do
 
   desc 'Updates and publishes the guides for the just-released RubyGems'
   task 'publish'
+
+  on_master = `git branch --list master`.strip == '* master'
+  on_master = true if ENV['FORCE']
 
   task 'publish' => %w[
     guides:pull
@@ -303,7 +223,7 @@ namespace 'blog' do
 
     history = File.read 'History.txt'
 
-    history.force_encoding Encoding::UTF_8 if Object.const_defined? :Encoding
+    history.force_encoding Encoding::UTF_8
 
     _, change_log, = history.split %r%^===\s*\d.*%, 3
 
@@ -338,7 +258,7 @@ namespace 'blog' do
 
     last_change_type = change_types.pop
 
-    if change_types.empty? then
+    if change_types.empty?
       change_types = ''
     else
       change_types = change_types.join(', ') << ' and '
@@ -411,64 +331,6 @@ end
 
 # Misc Tasks ---------------------------------------------------------
 
-# These tasks expect to have the following directory structure:
-#
-#   git/git.rubini.us/code # Rubinius git HEAD checkout
-#   svn/ruby/trunk         # ruby subversion HEAD checkout
-#   svn/rubygems/trunk     # RubyGems subversion HEAD checkout
-#
-# If you don't have this directory structure, set RUBY_PATH and/or
-# RUBINIUS_PATH.
-
-def rsync_with dir
-  rsync_options =
-    "-avP " +
-    "--exclude '*svn*' " +
-    "--exclude '*swp' " +
-    "--exclude '*rbc' " +
-    "--exclude '*.rej' " +
-    "--exclude '*.orig' " +
-    "--exclude 'lib/rubygems/defaults/*' " +
-    "--exclude gauntlet_rubygems.rb"
-
-  sh "rsync #{rsync_options} bin/gem             #{dir}/bin/gem"
-  sh "rsync #{rsync_options} lib/                #{dir}/lib"
-  sh "rsync #{rsync_options} test/               #{dir}/test"
-end
-
-def diff_with dir
-  diff_options = "-urpN --exclude '*svn*' --exclude '*swp' --exclude '*rbc'"
-  sh "diff #{diff_options} bin/gem             #{dir}/bin/gem;         true"
-  sh "diff #{diff_options} lib/ubygems.rb      #{dir}/lib/ubygems.rb;  true"
-  sh "diff #{diff_options} lib/rubygems.rb     #{dir}/lib/rubygems.rb; true"
-  sh "diff #{diff_options} lib/rubygems        #{dir}/lib/rubygems;    true"
-  sh "diff #{diff_options} lib/rbconfig        #{dir}/lib/rbconfig;    true"
-  sh "diff #{diff_options} test/rubygems       #{dir}/test/rubygems;   true"
-end
-
-rubinius_dir = ENV['RUBINIUS_PATH'] || '../git.rubini.us/code'
-ruby_dir     = ENV['RUBY_PATH']     || '../../svn/ruby/trunk'
-
-desc "Updates Ruby HEAD with the currently checked-out copy of RubyGems."
-task :update_ruby do
-  rsync_with ruby_dir
-end
-
-desc "Updates Rubinius HEAD with the currently checked-out copy of RubyGems."
-task :update_rubinius do
-  rsync_with rubinius_dir
-end
-
-desc "Diffs Ruby HEAD with the currently checked-out copy of RubyGems."
-task :diff_ruby do
-  diff_with ruby_dir
-end
-
-desc "Diffs Rubinius HEAD with the currently checked-out copy of RubyGems."
-task :diff_rubinius do
-  diff_with rubinius_dir
-end
-
 desc "Cleanup trailing whitespace"
 task :whitespace do
   system 'find . -not \( -name .svn -prune -o -name .git -prune \) -type f -print0 | xargs -0 sed -i "" -E "s/[[:space:]]*$//"'
@@ -478,7 +340,7 @@ desc "Update the manifest to reflect what's on disk"
 task :update_manifest do
   files = []
   require 'find'
-  exclude = Hoe::DEFAULT_CONFIG["exclude"]
+  exclude = %r[/\/tmp\/|\/pkg\/|CVS|\.DS_Store|\/doc\/|\/coverage\/|\.svn|\.git|TAGS|extconf.h|\.bundle$|\.o$|\.log$/|\./bundler/(?!lib|man|exe|[^/]+\.md|bundler.gemspec)]ox
   Find.find(".") do |path|
     next unless File.file?(path)
     next if path =~ exclude
@@ -488,7 +350,18 @@ task :update_manifest do
 end
 
 namespace :bundler do
+  desc "Initialize bundler submodule"
   task :checkout do
     sh "git submodule update --init"
+  end
+
+  task :build_metadata do
+    chdir('bundler') { sh "rake build_metadata" }
+  end
+
+  namespace :build_metadata do
+    task :clean do
+      chdir('bundler') { sh "rake build_metadata:clean" }
+    end
   end
 end

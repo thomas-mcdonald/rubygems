@@ -11,19 +11,11 @@ class Gem::Commands::YankCommand < Gem::Command
 
   def description # :nodoc:
     <<-EOF
-The yank command removes a gem you pushed to a server from the server's
-index.
-
-Note that if you push a gem to rubygems.org the yank command does not
-prevent other people from downloading the gem via the download link.
+The yank command permanently removes a gem you pushed to a server.
 
 Once you have pushed a gem several downloads will happen automatically
-via the webhooks.  If you accidentally pushed passwords or other sensitive
+via the webhooks. If you accidentally pushed passwords or other sensitive
 data you will need to change them immediately and yank your gem.
-
-If you are yanking a gem due to intellectual property reasons contact
-http://help.rubygems.org for permanent removal.  Be sure to mention this
-as the reason for the removal request.
     EOF
   end
 
@@ -59,7 +51,7 @@ as the reason for the removal request.
     version   = get_version_from_requirements(options[:version])
     platform  = get_platform_from_requirements(options)
 
-    if version then
+    if version
       yank_gem(version, platform)
     else
       say "A version argument is required: #{usage}"
@@ -101,4 +93,3 @@ as the reason for the removal request.
   end
 
 end
-

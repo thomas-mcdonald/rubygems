@@ -19,7 +19,7 @@ class TestGemRequestSetGemDependencyAPI < Gem::TestCase
     @gda.instance_variable_set :@vendor_set, @vendor_set
   end
 
-  def with_engine_version name, version
+  def with_engine_version(name, version)
     engine               = RUBY_ENGINE if Object.const_defined? :RUBY_ENGINE
     engine_version_const = "#{Gem.ruby_engine.upcase}_VERSION"
     engine_version       = Object.const_get engine_version_const
@@ -627,11 +627,7 @@ end
       assert_equal [dep('a'), dep('b')], @set.dependencies
       io
     end
-    tf.close! if tf.respond_to? :close!
-  end
-
-  def test_name_typo
-    assert_same @GDA, Gem::RequestSet::GemDepedencyAPI
+    tf.close!
   end
 
   def test_pin_gem_source
@@ -656,20 +652,23 @@ end
   end
 
   def test_platform_mswin
-    util_set_arch 'i686-darwin8.10.1' do
-      @gda.platform :mswin do
-        @gda.gem 'a'
+    if win_platform?
+      util_set_arch 'x86-mswin32-60' do
+        @gda.platform :mswin do
+          @gda.gem 'a'
+        end
+
+        assert_equal [dep('a')], @set.dependencies
+        refute_empty @set.dependencies
       end
+    else
+      util_set_arch 'i686-darwin8.10.1' do
+        @gda.platform :mswin do
+          @gda.gem 'a'
+        end
 
-      assert_empty @set.dependencies
-    end
-
-    util_set_arch 'x86-mswin32-60' do
-      @gda.platform :mswin do
-        @gda.gem 'a'
+        assert_empty @set.dependencies
       end
-
-      refute_empty @set.dependencies
     end
   end
 
@@ -712,26 +711,20 @@ end
   end
 
   def test_platforms
-    util_set_arch 'i686-darwin8.10.1' do
-      @gda.platforms :ruby do
-        @gda.gem 'a'
+    unless win_platform?
+      util_set_arch 'i686-darwin8.10.1' do
+        @gda.platforms :ruby do
+          @gda.gem 'a'
+        end
+
+        assert_equal [dep('a')], @set.dependencies
+
+        @gda.platforms :mswin do
+          @gda.gem 'b'
+        end
+
+        assert_equal [dep('a')], @set.dependencies
       end
-
-      assert_equal [dep('a')], @set.dependencies
-
-      @gda.platforms :mswin do
-        @gda.gem 'b'
-      end
-
-      assert_equal [dep('a')], @set.dependencies
-    end
-
-    util_set_arch 'x86-mswin32-60' do
-      @gda.platforms :mswin do
-        @gda.gem 'c'
-      end
-
-      assert_equal [dep('a'), dep('c')], @set.dependencies
     end
   end
 
@@ -828,4 +821,3 @@ end
   end
 
 end
-
