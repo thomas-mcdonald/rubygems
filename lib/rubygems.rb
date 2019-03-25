@@ -1179,6 +1179,7 @@ An Array (#{env.inspect}) was passed in from #{caller[3]}
     if USE_BUNDLER_FOR_GEMDEPS
 
       ENV["BUNDLE_GEMFILE"] ||= File.expand_path(path)
+      ENV["BUNDLE_PATH__SYSTEM"] ||= "true"
       require 'rubygems/user_interaction'
       Gem::DefaultUserInteraction.use_ui(ui) do
         require "bundler"
