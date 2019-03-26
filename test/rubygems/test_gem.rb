@@ -1829,11 +1829,20 @@ class TestGem < Gem::TestCase
     end
     expected =
       if Gem::USE_BUNDLER_FOR_GEMDEPS
-        <<-EXPECTED
+        if Bundler.feature_flag.lockfile_uses_separate_rubygems_sources?
+          <<-EXPECTED
+Could not find gem 'a' in locally installed gems.
+The source does not contain any versions of 'a'
+You may need to `gem install -g` to install missing gems
+
+          EXPECTED
+        else
+          <<-EXPECTED
 Could not find gem 'a#{platform}' in any of the gem sources listed in your Gemfile.
 You may need to `gem install -g` to install missing gems
 
-        EXPECTED
+          EXPECTED
+        end
       else
         <<-EXPECTED
 Unable to resolve dependency: user requested 'a (>= 0)'
