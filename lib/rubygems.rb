@@ -1250,6 +1250,8 @@ An Array (#{env.inspect}) was passed in from #{caller[3]}
     #
 
     def register_default_spec(spec)
+      return if spec.name == "bundler"
+
       new_format = Gem.default_gems_use_full_paths? || spec.require_paths.any? {|path| spec.files.any? {|f| f.start_with? path } }
 
       if new_format
